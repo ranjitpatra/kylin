@@ -22,7 +22,6 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -40,6 +39,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -496,10 +496,8 @@ public class CubeDesc extends RootPersistentEntity implements IEngineAware {
         if (!name.equals(cubeDesc.name))
             return false;
 
-        if (!modelName.equals(cubeDesc.modelName))
-            return false;
+        return modelName.equals(cubeDesc.modelName);
 
-        return true;
     }
 
     @Override
@@ -653,12 +651,9 @@ public class CubeDesc extends RootPersistentEntity implements IEngineAware {
 
         if (hbaseMappingAdapterName != null) {
             try {
-                Class<?> hbaseMappingAdapterClass = Class.forName(hbaseMappingAdapterName);
-                Method initMethod = hbaseMappingAdapterClass.getMethod("initHBaseMapping", CubeDesc.class);
-                initMethod.invoke(null, this);
-                Method initMeasureReferenceToColumnFamilyMethod = hbaseMappingAdapterClass
-                        .getMethod("initMeasureReferenceToColumnFamilyWithChecking", CubeDesc.class);
-                initMeasureReferenceToColumnFamilyMethod.invoke(null, this);
+                IHBaseMappingAdapter hbaseMappingAdapter = (IHBaseMappingAdapter) Class.forName(hbaseMappingAdapterName).newInstance();
+                hbaseMappingAdapter.initHBaseMapping(this);
+                hbaseMappingAdapter.initMeasureReferenceToColumnFamilyWithChecking(this);
             } catch (Exception e) {
                 throw new RuntimeException("Error during adapting hbase mapping", e);
             }
@@ -1033,7 +1028,7 @@ public class CubeDesc extends RootPersistentEntity implements IEngineAware {
                 whatsLeft.add(derCol);
         }
         if (whatsLeft.size() > 0) {
-            infoList.add(new DeriveInfo(type, join, (TblColRef[]) whatsLeft.toArray(new TblColRef[whatsLeft.size()]),
+            infoList.add(new DeriveInfo(type, join, whatsLeft.toArray(new TblColRef[whatsLeft.size()]),
                     false));
         }
     }
@@ -1375,10 +1370,37 @@ public class CubeDesc extends RootPersistentEntity implements IEngineAware {
                     result.remove(dictDesc.getColumnRef());
                     result.add(dictDesc.getResuseColumnRef());
                 }
+
+                //tiretree global domain dic
+                if (Objects.isNull(dictDesc.getResuseColumnRef()) && Objects.nonNull(dictDesc.getReuseColumn())) {
+                    logger.info(
+                            "tiretree global domain dic : column {} use tiretree global domain dic, reuse column {} ",
+                            dictDesc.getColumnRef(), dictDesc.getReuseColumn());
+                    result.remove(dictDesc.getColumnRef());
+                }
+
             }
         }
 
         return result;
+    }
+
+    /**
+     * get tiretree global domain dic
+     *
+     * @return
+     */
+    public List<CubeDescTiretreeGlobalDomainDictUtil.GlobalDict> listDomainDict() {
+        List<CubeDescTiretreeGlobalDomainDictUtil.GlobalDict> dicts = new ArrayList<>();
+        if (dictionaries != null && dictionaries.size() > 0) {
+            for (DictionaryDesc dictionaryDesc : dictionaries) {
+                if (dictionaryDesc.isDomain()) {
+                    dicts.add(new CubeDescTiretreeGlobalDomainDictUtil.GlobalDict(dictionaryDesc.getColumnRef(),
+                            dictionaryDesc.getReuseColumn(), dictionaryDesc.getCube(), dictionaryDesc.getModel()));
+                }
+            }
+        }
+        return dicts;
     }
 
     /**

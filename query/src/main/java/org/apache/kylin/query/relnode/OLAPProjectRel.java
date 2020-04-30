@@ -136,7 +136,7 @@ public class OLAPProjectRel extends Project implements OLAPRel {
     public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
         boolean hasRexOver = RexOver.containsOver(getProjects(), null);
         RelOptCost relOptCost = super.computeSelfCost(planner, mq).multiplyBy(.05)
-                .multiplyBy(getProjects().size() * (hasRexOver ? 50 : 1))
+                .multiplyBy(getProjects().size() * (double) (hasRexOver ? 50 : 1))
                 .plus(planner.getCostFactory().makeCost(0.1 * caseCount, 0, 0));
         return planner.getCostFactory().makeCost(relOptCost.getRows(), 0, 0);
     }
@@ -306,21 +306,23 @@ public class OLAPProjectRel extends Project implements OLAPRel {
         }
 
         // replace projects with dynamic fields
-        Map<TblColRef, RelDataType> dynFields = this.context.dynamicFields;
-        for (TblColRef dynFieldCol : dynFields.keySet()) {
-            String replaceFieldName = dynFieldCol.getName();
-            int rowIndex = this.columnRowType.getIndexByName(replaceFieldName);
-            if (rowIndex >= 0) {
-                int inputIndex = inputColumnRowType.getIndexByName(replaceFieldName);
-                if (inputIndex >= 0) {
-                    // field to be replaced
-                    RelDataType fieldType = dynFields.get(dynFieldCol);
-                    RelDataTypeField newField = new RelDataTypeFieldImpl(replaceFieldName, rowIndex, fieldType);
-                    // project to be replaced
-                    RelDataTypeField inputField = getInput().getRowType().getFieldList().get(inputIndex);
-                    RexInputRef newFieldRef = new RexInputRef(inputField.getIndex(), inputField.getType());
+        if (this.context.afterAggregate) {
+            Map<TblColRef, RelDataType> dynFields = this.context.dynamicFields;
+            for (TblColRef dynFieldCol : dynFields.keySet()) {
+                String replaceFieldName = dynFieldCol.getName();
+                int rowIndex = this.columnRowType.getIndexByName(replaceFieldName);
+                if (rowIndex >= 0) {
+                    int inputIndex = inputColumnRowType.getIndexByName(replaceFieldName);
+                    if (inputIndex >= 0) {
+                        // field to be replaced
+                        RelDataType fieldType = dynFields.get(dynFieldCol);
+                        RelDataTypeField newField = new RelDataTypeFieldImpl(replaceFieldName, rowIndex, fieldType);
+                        // project to be replaced
+                        RelDataTypeField inputField = getInput().getRowType().getFieldList().get(inputIndex);
+                        RexInputRef newFieldRef = new RexInputRef(inputField.getIndex(), inputField.getType());
 
-                    replaceFieldMap.put(rowIndex, new Pair<RelDataTypeField, RexNode>(newField, newFieldRef));
+                        replaceFieldMap.put(rowIndex, new Pair<RelDataTypeField, RexNode>(newField, newFieldRef));
+                    }
                 }
             }
         }

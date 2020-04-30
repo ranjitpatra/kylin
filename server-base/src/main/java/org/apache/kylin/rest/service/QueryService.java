@@ -180,6 +180,7 @@ public class QueryService extends BasicService {
         config.setMaxTotal(kylinConfig.getQueryMaxCacheStatementNum());
         config.setBlockWhenExhausted(false);
         config.setMinEvictableIdleTimeMillis(10 * 60 * 1000L); // cached statement will be evict if idle for 10 minutes
+        config.setTimeBetweenEvictionRunsMillis(60 * 1000L); 
         GenericKeyedObjectPool<PreparedContextKey, PreparedContext> pool = new GenericKeyedObjectPool<>(factory,
                 config);
         return pool;
@@ -696,6 +697,13 @@ public class QueryService extends BasicService {
             DBUtils.closeQuietly(conn);
             if (preparedContext != null) {
                 if (borrowPrepareContext) {
+                    // Set tag isBorrowedContext true, when return preparedContext back
+                    for (OLAPContext olapContext : preparedContext.olapContexts) {
+                        if (borrowPrepareContext) {
+                            olapContext.isBorrowedContext = true;
+                        }
+                    }
+
                     preparedContextPool.returnObject(preparedContextKey, preparedContext);
                 } else {
                     preparedContext.close();
@@ -1253,6 +1261,10 @@ public class QueryService extends BasicService {
         Connection conn = QueryConnection.getConnection(project);
         PreparedStatement preparedStatement = conn.prepareStatement(sql);
         Collection<OLAPContext> olapContexts = OLAPContext.getThreadLocalContexts();
+        // If the preparedContext is first initialized, then set the borrowed tag to false
+        for (OLAPContext olapContext : olapContexts) {
+            olapContext.isBorrowedContext = false;
+        }
         return new PreparedContext(conn, preparedStatement, olapContexts);
     }
 
